@@ -120,7 +120,7 @@ void loop() {
   /* PARAMETER SUARA */
 
   String kondisiSuara;
-
+ 
   if (suara < 50) {
     kondisiSuara = "SUNYI";
   }
