@@ -1,0 +1,104 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+/* KONFIGURASI PIN */
+#define MIC_PIN A0
+
+/* OBJECT */
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+/* KONFIGURASI SENSOR SUARA */
+const int sampleWindow = 50; // Lebar sampling 50 ms (20Hz)
+unsigned int sample;
+const double vRef = 0.0044; 
+const double dbOffset = 30.0; // Kalibrasi offset untuk menyamakan dengan dB nyata
+
+/* SETUP */
+void setup() {
+  Serial.begin(9600);
+  pinMode(MIC_PIN, INPUT);
+
+  lcd.init();
+  lcd.backlight();
+
+  lcd.setCursor(0, 0);
+  lcd.print("MONITOR SUARA");
+  lcd.setCursor(0, 1);
+  lcd.print("SYSTEM READY");
+
+  delay(2000);
+  lcd.clear();
+}
+
+/* LOOP */
+void loop() {
+  unsigned long startMillis = millis();  
+  unsigned int peakToPeak = 0;   
+
+  unsigned int signalMax = 0;
+  unsigned int signalMin = 1024;
+
+  // 1. Proses Sampling Gelombang AC Audio
+  while (millis() - startMillis < sampleWindow) {
+    sample = analogRead(MIC_PIN);
+    if (sample < 1024) {  
+       if (sample > signalMax) {
+          signalMax = sample;
+       }
+       else if (sample < signalMin) {
+          signalMin = sample;  
+       }
+    }
+  }
+   
+  // 2. Hitung Amplitudo Puncak-ke-Puncak
+  peakToPeak = signalMax - signalMin;  
+   
+  // 3. Konversi ADC ke Volt (Nilai minimum dibatasi 1 agar log10 tidak minus tak terhingga)
+  if (peakToPeak < 1) peakToPeak = 1; 
+  double volts = (peakToPeak * 5.0) / 1023.0;  
+
+  // 4. Rumus Logaritma Desibel (dB)
+  double suara = 20.0 * log10(volts / vRef) + dbOffset;
+
+  // Pembatasan logika agar nilai tidak minus jika ruangan sangat hening
+  if (suara < 0) suara = 0;
+
+  /* PARAMETER SUARA */
+  String kondisiSuara;
+ 
+  if (suara < 50) {
+    kondisiSuara = "SUNYI";
+  }
+  else if (suara <= 80) {
+    kondisiSuara = "NORMAL";
+  }
+  else {
+    kondisiSuara = "BISING";
+  }
+
+  /* TAMPILKAN KE SERIAL MONITOR (Untuk Debugging) */
+  Serial.print("Tegangan: ");
+  Serial.print(volts);
+  Serial.print(" V | Intensitas: ");
+  Serial.print(suara);
+  Serial.print(" dB | Status: ");
+  Serial.println(kondisiSuara);
+
+  /* TAMPILKAN KE LCD */
+  lcd.clear();
+  
+  // Baris 1: Menampilkan nilai Desibel
+  lcd.setCursor(0, 0);
+  lcd.print("SUARA: ");
+  lcd.print(suara, 1); // Menampilkan 1 angka di belakang koma
+  lcd.print(" dB");
+
+  // Baris 2: Menampilkan Kondisi Lingkungan
+  lcd.setCursor(0, 1);
+  lcd.print("STATUS: ");
+  lcd.print(kondisiSuara);
+
+  // Delay dipersingkat agar LCD update lebih responsif terhadap suara sekitar
+  delay(500); 
+}
